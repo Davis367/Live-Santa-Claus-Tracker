@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Santa Tracker – Live Radar</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<style>
+  body{margin:0;font-family:"Segoe UI",Arial,sans-serif;background:#0b132b;color:#fff}
+  #app{display:flex;height:100vh}
+  #sidebar{width:320px;background:#1c2541;padding:20px;box-sizing:border-box;border-right:2px solid #3a86ff}
+  #sidebar h1{margin:0 0 10px;color:#ff595e;font-size:24px}
+  .stat{margin:15px 0;padding:10px;background:#3a506b;border-radius:6px}
+  .stat span{display:block;font-size:14px;color:#cbd5ff}
+  .stat strong{font-size:20px;color:#ffd166}
+  #map{flex:1;position:relative}
+  #snow{position:absolute;inset:0;pointer-events:none;z-index:500}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:#1c2541;color:white}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <h1>🎅 Santa Tracker</h1>
+    <div class="stat"><span>Speed</span><strong id="speed">0 km/h</strong></div>
+    <div class="stat"><span>Altitude</span><strong id="altitude">0 m</strong></div>
+    <div class="stat"><span>Gifts Delivered</span><strong id="gifts">0</strong></div>
+    <div class="stat"><span>Current Region</span><strong id="region">North Pole</strong></div>
+  </div>
+  <div id="map">
+    <canvas id="snow"></canvas>
+  </div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js">
+
+// --- CITY DELIVERY LOG ---
+const cities=[
+  {name:'Reykjavík',lat:64.1,lng:-21.9},
+  {name:'London',lat:51.5,lng:-0.1},
+  {name:'Paris',lat:48.8,lng:2.3},
+  {name:'Rome',lat:41.9,lng:12.5},
+  {name:'Cairo',lat:30.0,lng:31.2},
+  {name:'Dubai',lat:25.2,lng:55.3},
+  {name:'Delhi',lat:28.6,lng:77.2},
+  {name:'Tokyo',lat:35.6,lng:139.7},
+  {name:'Sydney',lat:-33.9,lng:151.2}
+];
+let delivered=new Set();
+
+function checkCities(){
+  cities.forEach(c=>{
+    const d=Math.hypot(c.lat-lat,c.lng-lng);
+    if(d<1.5 && !delivered.has(c.name)){
+      delivered.add(c.name);
+      gifts+=1000;
+      marker.bindPopup(`🎁 Delivered in <b>${c.name}</b>`).openPopup();
+    }
+  });
+}
+
+// --- DAY / NIGHT OVERLAY ---
+const nightLayer=L.rectangle([[-90,-180],[90,180]],{
+  color:'#000',weight:0,fillOpacity:0.35
+}).addTo(map);
+
+function updateDayNight(){
+  const hour=new Date().getUTCHours();
+  const offset=(hour/24)*360-180;
+  nightLayer.setBounds([[-90,offset],[90,180]]);
+}
+
+// --- WEBSOCKET SIMULATION ---
+function fakeWebSocket(){
+  tick();
+  checkCities();
+  updateDayNight();
+}
+
+clearInterval();
+setInterval(fakeWebSocket,1000);
+
+</script>
+<script>
+// --- MAP ---
+const map=L.map('map',{worldCopyJump:true}).setView([70,0],3);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:7,attribution:'© OpenStreetMap'}).addTo(map);
+
+// --- ICON ---
+const santaIcon=L.icon({iconUrl:'https://cdn-icons-png.flaticon.com/512/4202/4202843.png',iconSize:[48,48],iconAnchor:[24,24]});
+
+// --- STATE ---
+let lat=70,lng=0,gifts=0;
+const trail=[];
+
+const marker=L.marker([lat,lng],{icon:santaIcon}).addTo(map).bindPopup('🎅 Santa Claus<br>Delivering gifts');
+const polyline=L.polyline(trail,{color:'red',weight:3,opacity:0.8}).addTo(map);
+
+// --- FAKE WEBSOCKET FEED ---
+function tick(){
+  lat-=0.25; lng+=0.5;
+  if(lat<-60){lat=70;lng=0;gifts=0;trail.length=0}
+
+  trail.push([lat,lng]); if(trail.length>100) trail.shift();
+
+  marker.setLatLng([lat,lng]);
+  polyline.setLatLngs(trail);
+  map.panTo([lat,lng],{animate:true,duration:1});
+
+  const speed=800+Math.floor(Math.random()*200);
+  const altitude=9000+Math.floor(Math.random()*1000);
+  gifts+=Math.floor(Math.random()*400);
+
+  speedEl.textContent=speed+' km/h';
+  altitudeEl.textContent=altitude+' m';
+  giftsEl.textContent=gifts.toLocaleString();
+  regionEl.textContent=lat>0?'Northern Hemisphere':'Southern Hemisphere';
+}
+
+const speedEl=document.getElementById('speed');
+const altitudeEl=document.getElementById('altitude');
+const giftsEl=document.getElementById('gifts');
+const regionEl=document.getElementById('region');
+
+setInterval(tick,1000);
+
+// --- SNOW CANVAS ---
+const canvas=document.getElementById('snow');
+const ctx=canvas.getContext('2d');
+let W,H; const flakes=[];
+
+function resize(){W=canvas.width=canvas.offsetWidth;H=canvas.height=canvas.offsetHeight}
+window.addEventListener('resize',resize); resize();
+
+for(let i=0;i<150;i++)flakes.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*2+1,s:Math.random()*1+0.5});
+
+function snow(){
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='white';
+  flakes.forEach(f=>{
+    ctx.beginPath(); ctx.arc(f.x,f.y,f.r,0,Math.PI*2); ctx.fill();
+    f.y+=f.s; if(f.y>H){f.y=0;f.x=Math.random()*W}
+  });
+  requestAnimationFrame(snow);
+}
+
+snow();
+</script>
+</body>
+</html>
